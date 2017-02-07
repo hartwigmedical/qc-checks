@@ -1,0 +1,105 @@
+#!/bin/bash
+
+setpath=$1
+SNPCHECK_SCRIPT=/bin/true
+CHECKPIPELINE_SCRIPT=check_pipeline_output
+HEALTHTESTS_SCRIPT=do_healthcheck_qctests
+
+function main() {
+    local failures=0
+    setname=$( basename $setpath )
+    
+    echo
+    echo '----- General Info -----'
+    info "Starting QC check on set: "$setname
+    
+    echo '----- Technical Check -----'
+    runCheckPipelineOutput $setpath || ((failures++))
+    
+    echo '----- SNP Check -----'
+    runSnpCheck $setpath || ((failures++))
+    
+    echo '----- Health Tests -----'
+    runHealthTests $setpath || ((failures++))
+    
+    [[ $failures -gt 0 ]] && error "${failures} FAILURES IN ${setname}"
+    echo 
+    
+}
+
+function runSnpCheck() {
+    local setpath=$1 && shift
+    if $SNPCHECK_SCRIPT -r ${setpath}
+    then
+        ok
+        return 0
+    else
+        fail "[ERROR] $?"
+        return 1
+    fi
+}
+
+function runCheckPipelineOutput() {
+    local setpath=$1 && shift
+    if $CHECKPIPELINE_SCRIPT ${setpath} > /dev/null
+    then
+        ok
+        return 0
+    else
+        fail "[ERROR] $?"
+        return 1
+    fi
+}
+
+function runHealthTests() {
+    local setpath=$1 && shift
+    setname=$( basename $setpath )
+    hclogfile=${1}/logs/healthcheck.json"
+    if $HEALTHTESTS_SCRIPT --healthcheck-log-file ${hclogfile}
+    then
+        ok
+        return 0
+    else
+        fail "[ERROR] $?"
+        return 1
+    fi
+}
+
+function log() {
+    local level=$1 && shift
+    local msg=$1 && shift
+    echo "[${level}] ${msg}"
+}
+
+function error() {
+    log "ERROR" "$1"
+    exit 1
+}
+
+function warn() {
+    log "WARN" "$1"
+}
+
+function info() {
+    log "INFO" "$1"
+}
+
+function ok() {
+    local note=${1+" $1"}
+    info "${FUNCNAME[1]} OK${note}"
+}
+
+function fail() {
+    local cause=$1 && shift
+    warn "${FUNCNAME[1]}: ${cause}"
+}
+
+if [[ $# -eq 0 ]] || [[ $1 == "-h" ]]; then
+    echo "---"
+    echo " Descr: Performs some qc checks on set"
+    echo " Usage: $(basename "$0") /path/to/pipeline/output/dir/"
+    echo "        $(basename "$0") /path1 /path2"
+    echo "---"
+else
+    main "$@"
+fi
