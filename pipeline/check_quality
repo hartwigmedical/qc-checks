@@ -54,7 +54,7 @@ function runCheckPipelineOutput() {
 function runHealthTests() {
     local setpath=$1 && shift
     setname=$( basename $setpath )
-    hclogfile=${1}/logs/healthcheck.json"
+    hclogfile=${1}/logs/healthcheck.json
     if $HEALTHTESTS_SCRIPT --healthcheck-log-file ${hclogfile}
     then
         ok
