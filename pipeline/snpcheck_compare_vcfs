@@ -149,7 +149,7 @@ sub compareCalls{
     say "[INFO] Total informative = $totalInformative (min required: $MIN_INFORMATIVE)";
     say "[INFO] Total informative and equal = $equal ($equalPerc%)";
     say "[INFO] Total informative but unequal = $unequal ($unequalPerc%)";
-    say "[INFO] Total distance between samples = $distance (max allowd: $MAX_DISTANCE)";
+    say "[INFO] Total distance between samples = $distance (max allowed: $MAX_DISTANCE)";
     say "[INFO] Chrom: ".join( " ", map( sprintf( "%2s", $_ ), @toprint_chroms ) );
     say "[INFO] file1: ".join( " ", map( sprintf( "%2s", $_ ), @toprint_calls1 ) );
     say "[INFO] file2: ".join( " ", map( sprintf( "%2s", $_ ), @toprint_calls2 ) );
