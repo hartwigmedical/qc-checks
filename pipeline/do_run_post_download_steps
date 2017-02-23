@@ -1,0 +1,48 @@
+#!/bin/bash
+
+if [ $# -eq 0 ]; then
+    echo " Run with: $( basename $0 ) setpath1 [setpath2 setpathn]"
+    echo " Example:  $( basename $0 ) /data/schuberg/17*" 
+    exit 1
+fi
+
+run_paths=($@) # eg 123456_HMFregCPCT_FR1_FR2_NAME1 etc
+hc_script=run_health_checker_on_single_run_dir
+#hc_script=/data/common/tools/healthchecker_v1.1/base-checker.sh
+hc_outdir=/data/common/dbs/healthchecklogs/
+#wgs_vcfs_dir=/data/common/dbs/snpcheck/32SNPtaq/samplevcfs/wgs/
+
+## first sanity checks
+for run_path in "${run_paths[@]}"; do
+    if [[ ! -d $run_path ]]; then
+        echo "[ERROR] Non existing path provided (${run_path})"
+        exit 1
+    fi
+done
+
+## generate health check logs
+for run_path in "${run_paths[@]}"; do
+    
+    run_name=$( basename $run_path )
+    out_name=${run_name}"_healthcheck"
+    out_path=${hc_outdir}/${out_name}
+    
+    if [[ -f ${out_path} ]]; then
+        echo "[WARN] Healthcheck exists, skip ($out_path)"
+    else
+        echo "[INFO] Running healthcheck ($run_name)"
+        ${hc_script} $run_path > ${out_path}
+    fi
+    
+done
+
+
+## gather the genotype VCFs for snpcheck
+#for run_path in "${run_paths[@]}"; do
+#    echo "[INFO]   Copying fingerprint VCF (${run_path})"
+#    find ${run_path} -name "*_32SNP*vcf" -exec cp {} ${wgs_vcfs_dir} \;
+#done
+
+## create new clustered/grouped file with added vcfs
+#/data/common/dbs/snpcheck/scripts/run_snpcheck_creator
+
