@@ -17,7 +17,7 @@ GetOptions (
 )
 or die("Error in command line arguments\n");
 say "Run with: --healthcheck-log-file <pathToFile>" and exit(1) unless $healthcheck_log_file;
-die "[ERROR] Provided healthcheck log file does not exist\n" unless -f $healthcheck_log_file;
+die "[ERROR] Provided healthcheck log file ($healthcheck_log_file) does not exist\n" unless -f $healthcheck_log_file;
 
 ## ----------
 ## MAIN
@@ -48,11 +48,11 @@ sub doSingleSampleTests{
     
     ## retrieve all required variables
     my $PIPELINE_VERSION    = getValueBySample( $hcdata, $sample, 'PIPELINE_VERSION' );
-    my $PIPELINE_RUN_NAME   = getValueBySample( $hcdata, $sample, 'RUN_NAME' );
+    my $PIPELINE_RUN_NAME   = getValueBySample( $hcdata, $sample, 'SET_NAME', 'RUN_NAME' );
     my $CN_GAIN_COUNT       = getValueBySample( $hcdata, $sample, 'COPYNUMBER_GENOME_GAIN' );
     my $CN_LOSS_COUNT       = getValueBySample( $hcdata, $sample, 'COPYNUMBER_GENOME_LOSS' );
     my $COV_MEAN_R          = getValueBySample( $hcdata, $sample, 'COVERAGE_MEAN' );
-    my $GRM_SNP_COUNT_R     = getValueBySample( $hcdata, $sample, 'VARIANTS_GERMLINE_SNP' );
+    my $GRM_SNP_COUNT_R     = getValueBySample( $hcdata, $sample, 'GERMLINE_SNP_COUNT', 'VARIANTS_GERMLINE_SNP' );
     my $COV_PCT_10X_R       = getValueBySample( $hcdata, $sample, 'COVERAGE_10X' );
     my $COV_PCT_20X_R       = getValueBySample( $hcdata, $sample, 'COVERAGE_20X' );
     
@@ -92,7 +92,7 @@ sub doSomaticTests{
     ## retrieve all required variables
     my $SAMPLE_NAMES        = join( ", ", @samples );
     my $PIPELINE_VERSION    = getValueBySample( $hcdata, $tumsample, 'PIPELINE_VERSION' );
-    my $PIPELINE_RUN_NAME   = getValueBySample( $hcdata, $tumsample, 'RUN_NAME' );
+    my $PIPELINE_RUN_NAME   = getValueBySample( $hcdata, $tumsample, 'SET_NAME', 'RUN_NAME' );
     my $CN_GAIN_COUNT       = getValueBySample( $hcdata, $tumsample, 'COPYNUMBER_GENOME_GAIN' );
     my $CN_LOSS_COUNT       = getValueBySample( $hcdata, $tumsample, 'COPYNUMBER_GENOME_LOSS' );
     my $SOM_SNP_COUNT       = getValueBySample( $hcdata, $tumsample, 'SOMATIC_SNP_COUNT' );
@@ -109,8 +109,8 @@ sub doSomaticTests{
     my $COV_MEAN_R          = getValueBySample( $hcdata, $refsample, 'COVERAGE_MEAN' );
     my $COV_MEAN_T          = getValueBySample( $hcdata, $tumsample, 'COVERAGE_MEAN' );
     my $KINSHIP_TEST        = getValueBySample( $hcdata, $tumsample, 'KINSHIP_TEST' );
-    my $GRM_SNP_COUNT_R     = getValueBySample( $hcdata, $refsample, 'VARIANTS_GERMLINE_SNP' );
-    my $GRM_SNP_COUNT_T     = getValueBySample( $hcdata, $tumsample, 'VARIANTS_GERMLINE_SNP' );
+    my $GRM_SNP_COUNT_R     = getValueBySample( $hcdata, $refsample, 'GERMLINE_SNP_COUNT', 'VARIANTS_GERMLINE_SNP' );
+    my $GRM_SNP_COUNT_T     = getValueBySample( $hcdata, $tumsample, 'GERMLINE_SNP_COUNT', 'VARIANTS_GERMLINE_SNP' );
     my $COV_PCT_10X_R       = getValueBySample( $hcdata, $refsample, 'COVERAGE_10X' );
     my $COV_PCT_20X_R       = getValueBySample( $hcdata, $refsample, 'COVERAGE_20X' );
     my $COV_PCT_30X_T       = getValueBySample( $hcdata, $tumsample, 'COVERAGE_30X' );
@@ -221,18 +221,25 @@ sub ifHigherFail{
 
 
 sub getValueBySample{
-    my ($hcdata, $sample, $key ) = @_;
+    my ($hcdata, $sample, $key, $key2 ) = @_;
+    
     if ( defined $hcdata->{ $sample }{ $key } ){
         my $return = $hcdata->{ $sample }{ $key };
         die "[ERROR] Key \"$key\" found for sample \"$sample\" but is ERROR\n" if $return eq 'ERROR'; 
         return( $return );
     }
+    elsif ( $key2 and defined $hcdata->{ $sample }{ $key2 } ){
+        my $return = $hcdata->{ $sample }{ $key2 };
+        die "[ERROR] Key \"$key2\" found for sample \"$sample\" but is ERROR\n" if $return eq 'ERROR';
+        return( $return );
+        
+    }
     else{
         if ( $warn_instead_of_die ){
-            warn "[WARNING] Key \"$key\" not found for sample \"$sample\"\n"; 
+           warn "[WARNING] Key \"$key\" not found for sample \"$sample\"\n"; 
         }else{
-            die "[ERROR] Key \"$key\" not found for sample \"$sample\"\n"; 
-        }
+           die "[ERROR] Key \"$key\" not found for sample \"$sample\"\n"; 
+        } 
     }
 }
 
@@ -279,8 +286,8 @@ sub parseHealthcheckLog{
                 $refsample = $sample if ( $r_or_t eq 'R' );
                 $tumsample = $sample if ( $r_or_t eq 'T' );
             }
-            elsif ( $sample =~ /^(PMC)\d{6}(T|R)[IVX]*$/ ){
-                my $r_or_t = $2; 
+            elsif ( $sample =~ /^.+(T|R)[IVX]*$/ ){
+                my $r_or_t = $1; 
                 $refsample = $sample if ( $r_or_t eq 'R' );
                 $tumsample = $sample if ( $r_or_t eq 'T' );
             }
