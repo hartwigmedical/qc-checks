@@ -11,6 +11,9 @@ my $SCRIPT_NAME = `basename $0`; chomp($SCRIPT_NAME);
 my $MIN_INFORMATIVE = 24; # min amount of called positions
 my $MAX_DISTANCE = 4; # max distance between samples (HOM ref > HOM alt counts as 2)
 my %GENOTYPE_CONVERSION = ( './.'=>'-', '0/0'=>'0', '1/0'=>'1', '0/1'=>'1', '1/1'=>'2' );
+my $OUTPUT_DELIM = ' ';
+my $USE_TAB_DELIM;
+my $PRINT_FULL_NAME;
 
 my $HELP_TEXT = <<EOF;
  ---
@@ -20,6 +23,9 @@ my $HELP_TEXT = <<EOF;
      criterium: maximum samples distance = $MAX_DISTANCE
  Run with:
    $SCRIPT_NAME \${file1} \${file2}
+ Options:
+   -tabDelim       use tab as output delimiter for call table
+   -printFullName  add full name to end of printed table
  Notes:
    When less or more than 2 vcfs are provided only a call table is printed.
    Criteria are now based on 32SNP panel
@@ -34,8 +40,11 @@ GetOptions (
     #"vcf=s@" => \@vcfs,
     "help|h" => \$help,
     "verbose" => \$verbose,
+    "tabDelim" => \$USE_TAB_DELIM,
+    "printFullName" => \$PRINT_FULL_NAME,
 ) or die("Error in command line arguments\n");
 print $HELP_TEXT and exit(0) if $help;
+$OUTPUT_DELIM = "\t" if $USE_TAB_DELIM;
 
 ## input checks 
 my @vcfs = @ARGV;
@@ -50,13 +59,16 @@ foreach my $inputFile ( @vcfs ){
 ## -----
 my %store = ();
 my @shortNames = ();
+my %shortName2fullName = ();
 my $idx = 1;    
-foreach my $vcfFile ( @vcfs ){
-    my $vcfName = 'vcf'.sprintf( "%02s", $idx);
-    push( @shortNames, $vcfName );
+foreach my $vcfPath ( @vcfs ){
+    my $vcfShortName = 'vcf'.sprintf( "%02s", $idx);
+    my $vcfName = fileparse( $vcfPath );
+    $shortName2fullName{ $vcfShortName } = $vcfName;
+    push( @shortNames, $vcfShortName );
     $idx++;
-    say "[INFO] ShortName $vcfName for input file: $vcfFile";
-    parseVcf( $vcfFile, $vcfName, \%store );
+    say "[INFO] ShortName $vcfShortName for input file: $vcfPath";
+    parseVcf( $vcfPath, $vcfShortName, \%store );
 }
 
 if ( $vcfCount == 2 ){
@@ -75,17 +87,19 @@ sub printCallTable{
     
     my @regions = sort keys %$storeObject;    
     my @chroms = map( $storeObject->{ $_ }{ 'chr' }, @regions );
-    say "[INFO] Chr:   ".join( " ", map( sprintf( "%2s", $_ ), @chroms ) );
+    say join( $OUTPUT_DELIM, "[INFO] Chr:", map( sprintf( "%2s", $_ ), @chroms ) );
     
     foreach my $vcfName ( @$vcfNames ){
         my @calls = map( $storeObject->{ $_ }{ $vcfName }, @regions );
-        say "[INFO] $vcfName: ".join( " ", map( sprintf( "%2s", $_ ), @calls ) );
+        my $fullName = $shortName2fullName{ $vcfName };
+        push( @calls, $fullName ) if $PRINT_FULL_NAME;
+        say join( "$OUTPUT_DELIM", "[INFO] $vcfName:", map( sprintf( "%2s", $_ ), @calls ) );
     }
 }
 
 sub compareCalls{
     my ( $storeObject, $name1, $name2 ) = @_;
-    say "[INFO] Start comparison of $name1 to $name2";
+    say "[INFO] Start comparison of $name1 vs $name2";
     
     my $skipped = 0;
     my $failed = 0;
@@ -141,8 +155,12 @@ sub compareCalls{
         
     }
     my $totalInformative = $equal + $unequal;
-    my $equalPerc = sprintf( "%.2f", ($equal*100 / $totalInformative) );
-    my $unequalPerc = sprintf( "%.2f", ($unequal*100 / $totalInformative) );
+    my $equalPerc = sprintf( "%.2f", 0 );
+    my $unequalPerc = sprintf( "%.2f", 0 );
+    if ( $totalInformative > 0 ){
+        $equalPerc = sprintf( "%.2f", ($equal*100 / $totalInformative) );
+        $unequalPerc = sprintf( "%.2f", ($unequal*100 / $totalInformative) );
+    }
     
     say "[INFO] Total skipped = $skipped";
     say "[INFO] Total failed = $failed";
@@ -150,10 +168,10 @@ sub compareCalls{
     say "[INFO] Total informative and equal = $equal ($equalPerc%)";
     say "[INFO] Total informative but unequal = $unequal ($unequalPerc%)";
     say "[INFO] Total distance between samples = $distance (max allowed: $MAX_DISTANCE)";
-    say "[INFO] Chrom: ".join( " ", map( sprintf( "%2s", $_ ), @toprint_chroms ) );
-    say "[INFO] file1: ".join( " ", map( sprintf( "%2s", $_ ), @toprint_calls1 ) );
-    say "[INFO] file2: ".join( " ", map( sprintf( "%2s", $_ ), @toprint_calls2 ) );
-    say "[INFO] Match: ".join( " ", map( sprintf( "%2s", $_ ), @toprint_result ) );
+    say join( $OUTPUT_DELIM, "[INFO] Chrom: ", map( sprintf( "%2s", $_ ), @toprint_chroms ) );
+    say join( $OUTPUT_DELIM, "[INFO] file1: ", map( sprintf( "%2s", $_ ), @toprint_calls1 ) );
+    say join( $OUTPUT_DELIM, "[INFO] file2: ", map( sprintf( "%2s", $_ ), @toprint_calls2 ) );
+    say join( $OUTPUT_DELIM, "[INFO] Match: ", map( sprintf( "%2s", $_ ), @toprint_result ) );
     
     ## determine final OK or FAIL
     if ( $equal+$unequal < $MIN_INFORMATIVE ){
