@@ -2,7 +2,7 @@
 
 setpath=$1
 HEALTHCHECKLOGS_DIR=/data/common/dbs/healthchecklogs/
-SNPCHECK_VCFS_DIR_UMC=/data/common/dbs/snpcheck/32SNPtaq/samplevcfs/
+SNPCHECK_VCFS_DIR_UMC=/data/common/snpcheck/archive/32SNPtaq/samplevcfs/
 SNPCHECK_VCFS_DIR_HMF=/data/schuberg/snpcheckvcfupload/
 SNPCHECK_SCRIPT=snpcheck_compare_vcfs
 CHECKPIPELINE_SCRIPT=check_pipeline_output
