@@ -204,8 +204,8 @@ sub compareCalls{
     ## append sample names
     my $fullName1 = $shortName2fullName{ $name1 };
     my $fullName2 = $shortName2fullName{ $name2 };
-    push( @toprint_calls1, $fullName1 );
-    push( @toprint_calls2, $fullName2 );
+    push( @toprint_calls1, $fullName1 ) if $APPEND_FILE_NAME;
+    push( @toprint_calls2, $fullName2 ) if $APPEND_FILE_NAME;
     
     ## print to stdout
     say "[INFO] Total skipped = $skipped";
