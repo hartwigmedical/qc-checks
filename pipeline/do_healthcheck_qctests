@@ -280,17 +280,20 @@ sub parseHealthcheckLog{
     if ( $sampleCount == 2 ){
         my $refsample;
         my $tumsample;
+        
+        ## simple check to determine which sample is the tumor
         foreach my $sample ( @samples ){
-            if ( $sample =~ /^.+(T|R|N)[IVX]*$/ ){
-                my $r_or_t = $1; 
-                $refsample = $sample if ( $r_or_t eq 'R' );
-                $refsample = $sample if ( $r_or_t eq 'N' );
-                $tumsample = $sample if ( $r_or_t eq 'T' );
+            if ( exists $hcdata{ $sample }{ 'SOMATIC_SNP_COUNT' } ){
+                $tumsample = $sample;
             }
             else{
-                die "[ERROR] Somatic mode because multiple samples found, but sample name ($sample) is not in somatics format\n";
+                $refsample = $sample;
             }
         }
+        die "[ERROR] Multiple samples found so Somatic mode, but ref sample missing?\n" if not defined $refsample;
+        die "[ERROR] Multiple samples found so Somatic mode, but tum sample missing?\n" if not defined $tumsample;
+        
+        ## samples names will be used later to correctly locate info fields
         $hcdata{ refsample } = $refsample;
         $hcdata{ tumsample } = $tumsample;
     }
