@@ -28,10 +28,13 @@ my $HELP_TEXT = <<EOF;
      penalty HET to HOM: 1
      penalty HOM to HOM: 2
        
- Run with:
-   $SCRIPT_NAME \${vcf1} \${vcf2}
-   $SCRIPT_NAME /path/to/vcfs/*vcf
-   $SCRIPT_NAME -tab -print -col *vcf
+ Usage:
+   Compare two VCF files and perform check:
+     $SCRIPT_NAME \${vcf1} \${vcf2}
+   Print table of results for any number of VCFs:
+     $SCRIPT_NAME /path/to/vcfs/*vcf
+   Alter output format with tab delim + file names + single char use
+     $SCRIPT_NAME -tab -append -col *vcf
    
  Options:
    -tabDelim         use tab as output delimiter for call table
