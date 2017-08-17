@@ -147,7 +147,8 @@ sub compareCalls{
         ## skip positions that are not present in both
         ## to handle different length snpgenotyping design
         unless ( exists $info->{ $name1 } and exists $info->{ $name2 } ){
-            warn "[WARN] Location $loc not present in both, so skipping\n";next
+            say "[NOTE] Location $loc not present in both, ignoring location";
+            next;
         }
         
         ## use the collapsed notation if requested (see %GENOTYPE_CONVERSION)
