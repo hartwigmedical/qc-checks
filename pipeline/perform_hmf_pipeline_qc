@@ -37,9 +37,10 @@ function main() {
         echo -e "---\nFINAL RESULT: all checks OK\n"
 
         echo "  --- Potential further action ---"
-        echo "  # for already archived and partially downloaded sets:"
+        echo "  # for already archived and PARTIALLY DOWNLOADED sets:"
         echo "    sudo mv ${setpath} /data/cpct/runs/"
-        echo "  # for sets downloaded from reject and still to archive to weekly:"
+        echo "    sudo chown -R ${USER}:users /data/cpct/runs/${setname}"
+        echo "  # for sets downloaded FROM REJECT and still to archive to weekly:"
         echo "    sudo mv ${setpath} /data/processed_archive/"
         echo "    sudo chown -R root:root /data/processed_archive/${setname}"
         echo ""
