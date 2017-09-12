@@ -28,21 +28,18 @@ function main() {
             }
         iniEnabled SOMATIC_VARIANTS "${runDir}" &&
             {
-                SomaticsMergedCheck "${runDir}" || ((failures++));
-                SomaticsMeltedCheck "${runDir}" || ((failures++));
+                SomaticsPostProcessedCheck "${runDir}" || ((failures++));
             }
         iniEnabled INDELREALIGNMENT "${runDir}" &&
             {
-                BamSliceCheck "${runDir}" "realigned" || ((failures++));
+                BamSliceCheck "${runDir}" "postrealign" || ((failures++));
                 PrePostDiffCheck "${runDir}" "realign" || ((failures++));
             }
         iniEnabled BASEQUALITYRECAL "${runDir}" &&
             {
-                BamSliceCheck "${runDir}" "recalibrated" || ((failures++));
+                BamSliceCheck "${runDir}" "postrecal" || ((failures++));
                 PrePostDiffCheck "${runDir}" "recal" || ((failures++));
             }
-        iniEnabled ANNOTATE_VARIANTS "${runDir}" &&
-            { VcfSliceCheck "${runDir}" || ((failures++)); }
         iniEnabled EXONCALLCOV "$runDir" &&
             { ExonCovCheck "$runDir" || ((failures++)); }
         iniEnabled KINSHIP "${runDir}" &&
@@ -188,28 +185,14 @@ function SubmitLogErrorsCheck() {
     return 0
 }
 
-function SomaticsMergedCheck() {
+function SomaticsPostProcessedCheck() {
     local runDir=$1 && shift
     local somaticsDir=${runDir}/somaticVariants
-    if [[ -n $(find "${somaticsDir}" -mindepth 2 -maxdepth 2 -type f -wholename "*_merged_somatics.vcf" -size +0 2>/dev/null) ]]; then
+    if [[ -n $(find "${somaticsDir}" -mindepth 2 -maxdepth 2 -type f -wholename "*_post_processed.vcf" -size +0 2>/dev/null) ]]; then
         ok
         return 0
     else
-        fail "No non-empty merged somatics VCF found!"
-        return 1
-    fi
-}
-
-function SomaticsMeltedCheck() {
-    local runDir=$1 && shift
-    local somaticsDir=${runDir}/somaticVariants
-    local meltedFile=$(find "${somaticsDir}" -mindepth 2 -maxdepth 2 -type f -wholename "*_melted.vcf" -size +0 2>/dev/null | head -1)
-    if [[ -n ${meltedFile} ]]; then
-        local meltedCount=$(wc -l "${meltedFile}" | cut -d" " -f 1)
-        ok "(${meltedCount} lines in file)"
-        return 0
-    else
-        fail "No non-empty melted somatics VCF found!"
+        fail "No non-empty post processed somatics VCF found!"
         return 1
     fi
 }
@@ -234,17 +217,6 @@ function PrePostDiffCheck() {
         return 0
     else
         fail "No prepost${type}.diff found!"
-        return 1
-    fi
-}
-
-function VcfSliceCheck() {
-    local runDir=$1 && shift
-    if [[ -n $(find "${runDir}" -maxdepth 1 -type f -iname "*sliced*.vcf" -size +0 2>/dev/null) ]]; then
-        ok
-        return 0
-    else
-        fail "No non-empty VCF slice found!"
         return 1
     fi
 }
