@@ -59,8 +59,8 @@ function runSnpCheck() {
     local wgsvcf=$( find ${setpath} -name "*_32SNPtaq.vcf" | head -1 )
     if [[ -z ${wgsvcf} ]]; then fail "[ERROR] No wgs snpcheck vcf found" && return 1; fi
 
-    ## get file to compare with
-    local arrvcf=$( find ${SNPCHECK_VCFS_DIR_HMF} ${SNPCHECK_VCFS_DIR_UMC} -name "*${sampleid}*OpenArrayCalls.vcf" | head -1 ) 
+    ## get file to compare with (uses most recent found)
+    local arrvcf=$( find ${SNPCHECK_VCFS_DIR_HMF} ${SNPCHECK_VCFS_DIR_UMC} -name "*${sampleid}*OpenArrayCalls.vcf" -printf "%T+\t%p\n" | sort -r | awk '{print $2}' | head -1 ) 
     if [[ -z ${arrvcf} ]]; then fail "[ERROR] No array snpcheck vcf found" && return 1; fi
 
     #echo "sampleid = ${sampleid}"
