@@ -78,7 +78,7 @@ function runHealthTests() {
     setname=$( basename $setpath )
     hclogfile=${setpath}/logs/HealthCheck.out
 
-    if [ $(jq -r .ini_name ${setpath}/metadata) == "Somatic_Rerun_bam.ini" ];
+    if [ $(grep ^HEALTHCHECK$'\t' ${setpath}/logs/final.ini | cut -d $'\t' -f 2) == 'no' ];
     then
         info 'Detected rerun, skipping health-checks'
         return 0
