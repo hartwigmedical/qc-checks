@@ -63,7 +63,7 @@ function runSnpCheck() {
 
 function runCheckPipelineOutput() {
     local setpath=$1 && shift
-    if $CHECKPIPELINE_SCRIPT ${setpath} > /dev/null
+    if $CHECKPIPELINE_SCRIPT ${setpath}
     then
         ok
         return 0
@@ -77,6 +77,13 @@ function runHealthTests() {
     local setpath=$1 && shift
     setname=$( basename $setpath )
     hclogfile=${setpath}/logs/HealthCheck.out
+
+    if [ $(jq -r .ini_name ${setpath}/metadata) == "Somatic_Rerun_bam.ini" ];
+    then
+        info 'Detected rerun, skipping health-checks'
+        return 0
+    fi
+
     if $HEALTHTESTS_SCRIPT --healthcheck-log-file ${hclogfile}
     then
         ok
