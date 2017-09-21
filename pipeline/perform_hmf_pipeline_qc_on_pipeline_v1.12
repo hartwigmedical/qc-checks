@@ -56,7 +56,7 @@ function runSnpCheck() {
 
     ## get snpcheck file in rundir
     ## should be done using metadata json but does not contain barcode yet
-    local wgsvcf=$( find ${setpath} -name "*_26SNPtaq.vcf" | head -1 )
+    local wgsvcf=$( find ${setpath} -name "*_32SNPtaq.vcf" | head -1 )
     if [[ -z ${wgsvcf} ]]; then fail "[ERROR] No wgs snpcheck vcf found" && return 1; fi
 
     ## get file to compare with (uses most recent found)
@@ -92,7 +92,7 @@ function runCheckPipelineOutput() {
 function runHealthTests() {
     local setpath=$1 && shift
     setname=$( basename $setpath )
-    hclogfile=${setpath}"/logs/HealthCheck.out"
+    hclogfile=${setpath}"/logs/health-checks.txt"
     if $HEALTHTESTS_SCRIPT --healthcheck-log-file ${hclogfile}
     then
         ok
