@@ -154,7 +154,7 @@ sub ifLowerFail{
     $warn = $checkValue < $warnLimit unless $warnLimit eq 'NA';
     
     if    ( $fail ){ printMsg( 'FAIL', "$testName: $printValue < $failLimit" ) and $$failCount ++; }
-    elsif ( $warn ){ printMsg( 'WARN', "  [OK] $testName: $printValue > $failLimit but < $warnLimit" ) and $$warnCount ++; }
+    #elsif ( $warn ){ printMsg( 'WARN', "  [OK] $testName: $printValue > $failLimit but < $warnLimit" ) and $$warnCount ++; }
     else           { printMsg( 'INFO', "  [OK] $testName: $printValue > $failLimit (and also > $warnLimit)" ); }
 }
 
