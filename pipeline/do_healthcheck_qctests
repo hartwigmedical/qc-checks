@@ -122,11 +122,11 @@ sub doSomaticTests{
     if ( $som_check2_fail and $som_check3_fail ){ printMsg( 'FAIL', $test ) and $fails++;    }
     else{ printMsg( 'INFO', "  [OK] $test" ); }
     
-    ifLowerFail( \$fails, \$warns, 0.90, 0.95, $COV_PCT_10X_R, 'COVERAGE_10X_R' );
-    ifLowerFail( \$fails, \$warns, 0.70, 0.85, $COV_PCT_20X_R, 'COVERAGE_20X_R' );
-    ifLowerFail( \$fails, \$warns, 0.80, 0.97, $COV_PCT_30X_T, 'COVERAGE_30X_T' );
-    ifLowerFail( \$fails, \$warns, 0.65, 0.93, $COV_PCT_60X_T, 'COVERAGE_60X_T' );
-    ifLowerFail( \$fails, \$warns, 0.35, 'NA', $KINSHIP_TEST, 'KINSHIP' );
+    ifLowerFail( \$fails, 0.90, 0.95, $COV_PCT_10X_R, 'COVERAGE_10X_R' );
+    ifLowerFail( \$fails, 0.70, 0.85, $COV_PCT_20X_R, 'COVERAGE_20X_R' );
+    ifLowerFail( \$fails, 0.80, 0.97, $COV_PCT_30X_T, 'COVERAGE_30X_T' );
+    ifLowerFail( \$fails, 0.65, 0.93, $COV_PCT_60X_T, 'COVERAGE_60X_T' );
+    ifLowerFail( \$fails, 0.35, 'NA', $KINSHIP_TEST, 'KINSHIP' );
     
     generateFinalResultMessage( $tumsample, $fails, $warns);
 }
@@ -147,15 +147,14 @@ sub generateFinalResultMessage{
 }
 
 sub ifLowerFail{
-    my ($failCount, $warnCount, $failLimit, $warnLimit, $checkValue, $testName) = @_;
+    my ($failCount, $failLimit, $warnLimit, $checkValue, $testName) = @_;
     my $printValue = commify( roundNumber( $checkValue ) );
     my ($fail, $warn) = (0, 0);
     $fail = $checkValue < $failLimit unless $failLimit eq 'NA';
     $warn = $checkValue < $warnLimit unless $warnLimit eq 'NA';
     
     if    ( $fail ){ printMsg( 'FAIL', "$testName: $printValue < $failLimit" ) and $$failCount ++; }
-    #elsif ( $warn ){ printMsg( 'WARN', "  [OK] $testName: $printValue > $failLimit but < $warnLimit" ) and $$warnCount ++; }
-    else           { printMsg( 'INFO', "  [OK] $testName: $printValue > $failLimit (and also > $warnLimit)" ); }
+    else           { printMsg( 'INFO', "  [OK] $testName: $printValue > $failLimit" ); }
 }
 
 sub ifHigherFail{
