@@ -59,15 +59,14 @@ sub doSingleSampleTests{
     ## Start actual QC tests
     say "[INFO] QC Tests:";
     
-    ## keep track of fail and warn counts
+    ## keep track of fail counts
     my $fails = 0;
-    my $warns = 0;
     
-    ifLowerFail( \$fails, \$warns, 0.90, 0.95, $COV_PCT_10X_R, 'COVERAGE_10X_R' );
-    ifLowerFail( \$fails, \$warns, 0.70, 0.85, $COV_PCT_20X_R, 'COVERAGE_20X_R' );
+    ifLowerFail( \$fails, 0.90, $COV_PCT_10X_R, 'COVERAGE_10X_R' );
+    ifLowerFail( \$fails, 0.70, $COV_PCT_20X_R, 'COVERAGE_20X_R' );
     
     ## Final result message
-    generateFinalResultMessage( $sample, $fails, $warns);
+    generateFinalResultMessage( $sample, $fails);
 }
 
 
@@ -99,7 +98,6 @@ sub doSomaticTests{
     my $som_check1_fail = $SOM_SNP_DBSNP_COUNT > 250000;
     my $som_check2_fail = $SOM_SNP_COUNT > 1000000;
     my $som_check3_fail = $SOM_SNP_DBSNP_COUNT / $SOM_SNP_COUNT < 0.2;
-    
 
     ## print general info
     say "[INFO] Info Summary:";
@@ -109,9 +107,8 @@ sub doSomaticTests{
     say "[INFO]   SOMATIC_INDELS_COUNT = ".commify( $SOM_IND_COUNT );
     say "[INFO] QC Tests:";
     
-    ## keep track of fail and warn counts
+    ## keep track of fail counts
     my $fails = 0;
-    my $warns = 0;
     
     ## perform tests
     my $test = 'DBSNP_CONTAMINATION';
@@ -122,21 +119,21 @@ sub doSomaticTests{
     if ( $som_check2_fail and $som_check3_fail ){ printMsg( 'FAIL', $test ) and $fails++;    }
     else{ printMsg( 'INFO', "  [OK] $test" ); }
     
-    ifLowerFail( \$fails, 0.90, 0.95, $COV_PCT_10X_R, 'COVERAGE_10X_R' );
-    ifLowerFail( \$fails, 0.70, 0.85, $COV_PCT_20X_R, 'COVERAGE_20X_R' );
-    ifLowerFail( \$fails, 0.80, 0.97, $COV_PCT_30X_T, 'COVERAGE_30X_T' );
-    ifLowerFail( \$fails, 0.65, 0.93, $COV_PCT_60X_T, 'COVERAGE_60X_T' );
-    ifLowerFail( \$fails, 0.35, 'NA', $KINSHIP_TEST, 'KINSHIP' );
+    ifLowerFail( \$fails, 0.90, $COV_PCT_10X_R, 'COVERAGE_10X_R' );
+    ifLowerFail( \$fails, 0.70, $COV_PCT_20X_R, 'COVERAGE_20X_R' );
+    ifLowerFail( \$fails, 0.80, $COV_PCT_30X_T, 'COVERAGE_30X_T' );
+    ifLowerFail( \$fails, 0.65, $COV_PCT_60X_T, 'COVERAGE_60X_T' );
+    ifLowerFail( \$fails, 0.35, $KINSHIP_TEST, 'KINSHIP' );
     
-    generateFinalResultMessage( $tumsample, $fails, $warns);
+    generateFinalResultMessage( $tumsample, $fails);
 }
 
 sub generateFinalResultMessage{
-    my ($sample, $fails, $warns) = @_;
+    my ($sample, $fails) = @_;
     
     my $final_status = 'FAIL';
     $final_status = 'OK' if $fails == 0;
-    my $final_msg = "TEST RESULT for $sample (fails:$fails, warnings:$warns) = $final_status";
+    my $final_msg = "TEST RESULT for $sample (fails:$fails) = $final_status";
     
     if ( $final_status ne 'OK' ){ 
         warn "[FAIL] $final_msg\n" and exit(1); 
@@ -147,30 +144,14 @@ sub generateFinalResultMessage{
 }
 
 sub ifLowerFail{
-    my ($failCount, $failLimit, $warnLimit, $checkValue, $testName) = @_;
+    my ($failCount, $failLimit, $checkValue, $testName) = @_;
     my $printValue = commify( roundNumber( $checkValue ) );
-    my ($fail, $warn) = (0, 0);
+    my $fail = 0;
     $fail = $checkValue < $failLimit unless $failLimit eq 'NA';
-    $warn = $checkValue < $warnLimit unless $warnLimit eq 'NA';
     
     if    ( $fail ){ printMsg( 'FAIL', "$testName: $printValue < $failLimit" ) and $$failCount ++; }
     else           { printMsg( 'INFO', "  [OK] $testName: $printValue > $failLimit" ); }
 }
-
-sub ifHigherFail{
-    my ($failCount, $warnCount, $failLimit, $warnLimit, $checkValue, $testName) = @_;
-    my $printValue = commify( roundNumber( $checkValue ) );
-    my ($fail, $warn) = (0, 0);
-    $fail = $checkValue > $failLimit unless $failLimit eq 'NA';
-    $warn = $checkValue > $warnLimit unless $warnLimit eq 'NA';
-    
-    if    ( $fail ){ printMsg( 'FAIL', "$testName: $printValue > $failLimit" ) and $$failCount ++; }
-    elsif ( $warn ){ printMsg( 'WARN', "  [OK] $testName: $printValue < $failLimit but > $warnLimit" ) and $$warnCount ++; }
-    else           { printMsg( 'INFO', "  [OK] $testName: $printValue < $failLimit (and also < $warnLimit)" ); }
-    
-    return( $fail );
-}
-
 
 sub getValueBySample{
     my ($hcdata, $sample, $key, $key2 ) = @_;
