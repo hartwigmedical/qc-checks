@@ -40,9 +40,6 @@ function main() {
         echo "  # for already archived and PARTIALLY DOWNLOADED sets:"
         echo "    sudo mv ${setpath} /data/cpct/runs/"
         echo "    sudo chown -R ${USER}:users /data/cpct/runs/${setname}"
-        echo "  # for sets downloaded FROM REJECT and still to archive to weekly:"
-        echo "    sudo mv ${setpath} /data/processed_archive/"
-        echo "    sudo chown -R root:root /data/processed_archive/${setname}"
         echo ""
     fi 
 }
@@ -62,10 +59,6 @@ function runSnpCheck() {
     ## get file to compare with (uses most recent found)
     local arrvcf=$( find ${SNPCHECK_VCFS_DIR_HMF} ${SNPCHECK_VCFS_DIR_UMC} -name "*${sampleid}*OpenArrayCalls.vcf" -printf "%T+\t%p\n" | sort -r | awk '{print $2}' | head -1 ) 
     if [[ -z ${arrvcf} ]]; then fail "[ERROR] No array snpcheck vcf found" && return 1; fi
-
-    #echo "sampleid = ${sampleid}"
-    #echo "wgs vcf = ${wgsvcf}"
-    #echo "arr vcf = ${arrvcf}"
 
     if $SNPCHECK_SCRIPT "$wgsvcf" "$arrvcf"
     then
