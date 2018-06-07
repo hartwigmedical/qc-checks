@@ -96,7 +96,6 @@ if ( $vcfCount == 1 ){
     parseVcf( $vcf1, $sample1, \%store1 );
     
     ## perform all base (input VCF) vs call (DB VCF) pairwise comparisons
-    open my $out_fh, ">", $out or die "[ERROR] Unable to open file ($out): $!\n";
     my @comparisons = ();
     foreach my $vcf2 (find->file()->name('*.vcf')->in($SNPCHECK_DB)){
         my $sample2 = fileparse( $vcf2 );
@@ -106,7 +105,8 @@ if ( $vcfCount == 1 ){
         push( @comparisons, $comparison );
     }
     
-    printComparisonTable( \@comparisons, $out_fh );
+    open my $out_fh, ">", $out or die "[ERROR] Unable to open file ($out): $!\n";
+        printComparisonTable( \@comparisons, $out_fh );
     close $out_fh;
     
     say "[INFO] DONE: output in $out";
