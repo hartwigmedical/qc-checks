@@ -5,45 +5,53 @@ use 5.16.0;
 use Data::Dumper;
 use Getopt::Long;
 use File::Basename;
+use File::Find::Rule;
 use Array::Diff qw(:all);
+use JSON::XS;
 
 my $SCRIPT_NAME = `basename $0`; chomp($SCRIPT_NAME);
-my $MIN_INFORMATIVE = 18; # min amount of called positions
-my $MIN_IDENTICAL = 18; # min amount of identical calls
-my $MAX_DISTANCE = 4; # max distance between samples (HOM ref > HOM alt counts as 2)
-my $OUTPUT_DELIM = ' ';
-my $NO_CALL_CHAR = '-';
-my %GENOTYPE_CONVERSION = ('./.'=>$NO_CALL_CHAR,'0/0'=>'A','1/0'=>'B','0/1'=>'B','1/1'=>'C','1/2'=>'D','2/1'=>'D');
+my $SNPCHECK_DB = "/data/common/snpcheck/output/";
+my $DELIM_CHAR = ' ';
+my $NA_CHAR = '-';
+my %GT_CONVERSION = ('./.'=>$NA_CHAR,'0/0'=>'A','1/0'=>'B','0/1'=>'B','1/1'=>'C','1/2'=>'D','2/1'=>'D');
+my $MIN_USABLE = 18;
+my $MIN_IDENTICAL = 18;
+my $MAX_DISTANCE = 4;
+my $OUTPUT_FILE = "";
+
 my $USE_TAB_DELIM;
-my $APPEND_FILE_NAME;
 my $COLLAPSE_CALL;
 
 my $HELP_TEXT = <<EOF;
  ---
  Description:  
-   Compares genotypes of two vcfs. Returns OK if SNPcheck criteria are met.
-     criterium: minimal informative pos = $MIN_INFORMATIVE
-     criterium: minimal identical calls = $MIN_IDENTICAL
-     criterium: maximum sample distance = $MAX_DISTANCE
-     penalty HET to HOM: 1
-     penalty HOM to HOM: 2
-       
+    Compares genotypes of two vcfs. Returns OK if SNPcheck criteria are met.
+      criterium: minimal usable pos = $MIN_USABLE
+      criterium: minimal identical calls = $MIN_IDENTICAL
+      criterium: maximum sample distance = $MAX_DISTANCE
+      setting: mismatch penalty HET to HOM = 1
+      setting: mismatch penalty HOM to HOM = 2
+
+    Run modus depends on input amount of input VCFs:
+      * One input VCF: compare vs all vcfs in snpcheckDB ($SNPCHECK_DB)
+      * Two input VCFs: compare the two vcfs
+      * Three or more input VCFs: no comparison just print table
+
  Usage:
-   Compare two VCF files and perform check:
-     $SCRIPT_NAME \${vcf1} \${vcf2}
-   Print table of results for any number of VCFs:
-     $SCRIPT_NAME /path/to/vcfs/*vcf
-   Alter output format with tab delim + file names + single char use
-     $SCRIPT_NAME -tab -append -col *vcf
+    Compare one VCF file vs all in snpcheckDB
+      $SCRIPT_NAME \${vcf1} -outputFile \$my_out_file
+    Compare two VCF files and perform check:
+      $SCRIPT_NAME \${vcf1} \${vcf2}
+    Print table of calls for 3 or more VCFs:
+      $SCRIPT_NAME /path/to/vcfs/*vcf
+    Change output format with tab delim + single char calls
+      $SCRIPT_NAME /path/to/vcfs/*vcf -tab -collapse
    
  Options:
-   -tabDelim         use tab as output delimiter for call table
-   -appendFileNames  append vcf name to end of printed table
-   -collapseCall     print single character instead of genotype
-   
- Notes:
-   When vcf count != 2 no comparison is made, only a call table printed.
-   Different SNP designs can be mixed (missing calls are simply ignored)
+    -snpcheckDB    [s] path to dir with VCFs to serve as DB ($SNPCHECK_DB)
+    -outputFile    [s] path to output file with comparisons if run in genotypeDB mode
+    -tabDelim          use tab as output delimiter for output table
+    -collapseCall      collapse genotypes to single characters
  ---
 EOF
 
@@ -55,83 +63,132 @@ GetOptions (
     "help|h" => \$help,
     "verbose" => \$verbose,
     "tabDelim" => \$USE_TAB_DELIM,
-    "appendFileNames" => \$APPEND_FILE_NAME,
+    "outputFile=s" => \$OUTPUT_FILE,
     "collapseCall" => \$COLLAPSE_CALL,
+    "snpcheckDB=s" => \$SNPCHECK_DB,
+    
 ) or die "Error in command line arguments\n";
 print $HELP_TEXT and exit(0) if $help;
-$OUTPUT_DELIM = "\t" if $USE_TAB_DELIM;
+$DELIM_CHAR = "\t" if $USE_TAB_DELIM;
 
 ## input checks 
-my @vcfs = @ARGV;
-my $vcfCount = scalar @vcfs;
-die "[ERROR] No input vcfs provided?\n" unless $vcfCount;
-foreach my $inputFile ( @vcfs ){
-    die "[ERROR] File not found ($inputFile)\n" unless -f $inputFile;
-}
+die "[ERROR] GenotypeDB is not a directory ($SNPCHECK_DB)\n" unless -d $SNPCHECK_DB;
+die "[ERROR] No input vcfs provided?\n" unless scalar @ARGV;
 
 ## -----
 ## main
 ## -----
-my %store = ();
-my @shortNames = ();
-my %shortName2fullName = ();
-my $idx = 1;    
-foreach my $vcfPath ( @vcfs ){
-    my $vcfShortName = 'vcf'.sprintf( "%02s", $idx);
-    my $vcfName = fileparse( $vcfPath );
-    $shortName2fullName{ $vcfShortName } = $vcfName;
-    push( @shortNames, $vcfShortName );
-    $idx++;
-    say "[INFO] ShortName $vcfShortName for input file: $vcfPath";
-    parseVcf( $vcfPath, $vcfShortName, \%store );
+my @vcfs = @ARGV;
+my $vcfCount = scalar @vcfs;
+
+if ( $vcfCount == 1 ){
+    my $vcf1 = $vcfs[0];
+    
+    say "[INFO] Single vcf mode: will perform comparison to database ($SNPCHECK_DB)";
+    die "[EXIT] No -outputFile specified\n" unless $OUTPUT_FILE;
+    die "[EXIT] Ouput file already exists\n" if -f $OUTPUT_FILE;
+    die "[EXIT] Only plain text VCF supported\n" unless $vcf1 =~ /\.vcf$/;
+    
+    my $out = $OUTPUT_FILE;
+    my $log = $out . ".log";
+    my $sample1 = fileparse( $vcf1 );
+    my %store1 = ();
+    parseVcf( $vcf1, $sample1, \%store1 );
+    
+    ## perform all base (input VCF) vs call (DB VCF) pairwise comparisons
+    open my $out_fh, ">", $out or die "[ERROR] Unable to open file ($out): $!\n";
+    my @comparisons = ();
+    foreach my $vcf2 (find->file()->name('*.vcf')->in($SNPCHECK_DB)){
+        my $sample2 = fileparse( $vcf2 );
+        my %store1and2 = %store1;
+        parseVcf( $vcf2, $sample2, \%store1and2 );
+        my $comparison = compareTwoSamples( \%store1and2, $sample1, $sample2, \*STDOUT );
+        push( @comparisons, $comparison );
+    }
+    
+    printComparisonTable( \@comparisons, $out_fh );
+    close $out_fh;
+    
+    say "[INFO] DONE: output in $out";
 }
-
-print Dumper( \%store ) if $verbose;
-
-if ( $vcfCount == 2 ){
-    compareCalls( \%store, 'vcf01', 'vcf02' );
+elsif ( $vcfCount == 2 ){
+    say "[INFO] Two VCF mode: will perform pairwise comparison";
+    my %store = ();
+    my @names = ();
+    foreach my $vcf ( @vcfs ){
+        my $name = fileparse( $vcf );
+        push( @names, $name );
+        parseVcf( $vcf, $name, \%store );
+    }
+    my $comparison = compareTwoSamples( \%store, $names[0], $names[1], \*STDOUT );
+    exit(0) if $comparison->{result} eq 'OK';
+    exit(1);
 }
 else{
-    say "[INFO] More (or less) than 2 input vcfs so will just print table";
-    printCallTable( \%store, \@shortNames );
+    say "[INFO] More than two input vcfs: will perform no comparisons";
+    my %store = ();
+    my @names = ();
+    foreach my $vcf ( @vcfs ){
+        my $name = fileparse( $vcf );
+        push( @names, $name );
+        parseVcf( $vcf, $name, \%store );
+    }
+    printSampleGenotypesTable( \%store, \@names);
 }
 
 ## -----
 ## subroutines
 ## -----
-sub printCallTable{
+sub printComparisonTable{
+    my ( $comparisons, $fh ) = @_;
+    my @columns = qw( result usable failed skipped identical different sample1 sample2);
+    my $matches = 0;
+    
+    say "[INFO] Setting up comparison table (any matches will also be printed to STDOUT)";
+    say $fh '#' . join( "\t", @columns );
+    foreach my $comparison ( @$comparisons ){
+        say $fh join( "\t", map( $comparison->{$_}, @columns ) );
+        if ( $comparison->{result} eq 'OK' ){
+            say STDOUT "[INFO] Match between $comparison->{sample1} and $comparison->{sample2}" ;
+            $matches++;
+        }
+    }
+    say "[INFO] A total of $matches matches found";
+}
+    
+sub printSampleGenotypesTable{
     my ( $storeObject, $vcfNames ) = @_;
     
     my @regions = sort keys %$storeObject;    
     my @chroms = map( $storeObject->{ $_ }{ 'chr' }, @regions );
-    say join( $OUTPUT_DELIM, "[INFO] Chrom:", map( sprintf( "%3s", $_ ), @chroms ) );
+    say "[INFO] Genomic position order: " . join( ", ", @regions );
     
     foreach my $vcfName ( @$vcfNames ){
-        my $fullName = $shortName2fullName{ $vcfName };
         my $callField = 'gtCalls';
         $callField = 'gtCallsCollapsed' if $COLLAPSE_CALL;
         my @calls = ();
+        my $usable = 0;
         
         foreach my $region ( @regions ){
-            my $call = $NO_CALL_CHAR;
+            my $call = $NA_CHAR;
             $call = $storeObject->{ $region }{ $vcfName }{ $callField } if exists $storeObject->{ $region }{ $vcfName }{ $callField };
             push( @calls, $call );
+            $usable++ unless $call =~ /$NA_CHAR/;
         }
-        
-        push( @calls, $fullName ) if $APPEND_FILE_NAME;
-        say join( "$OUTPUT_DELIM", "[INFO] $vcfName:", map( sprintf( "%3s", $_ ), @calls ) );
+        say STDOUT join( "$DELIM_CHAR", map( $_, @calls ), $usable, $vcfName );
     }
 }
 
-sub compareCalls{
-    my ( $storeObject, $name1, $name2 ) = @_;
-    say "[INFO] Start comparison of $name1 vs $name2";
+sub compareTwoSamples{
+    my ( $storeObject, $sample1, $sample2 ) = @_;
+    say "[INFO] Start comparison of $sample1 vs $sample2";
     
-    my $distance = 0;
-    my $skipped  = 0;
-    my $failed   = 0;
-    my $equal    = 0;
-    my $unequal  = 0;
+    my $usable    = 0;
+    my $skipped   = 0;
+    my $failed    = 0;
+    my $identical = 0;
+    my $different = 0;
+    my $distance  = 0;
     
     my @print_order = sort keys %$storeObject;    
     my @toprint_chroms = ();
@@ -142,53 +199,53 @@ sub compareCalls{
     
     foreach my $loc ( @print_order ){
         
+        ## get location object with both samples
         my $info = $storeObject->{ $loc };
         
-        ## skip positions that are not present in both
-        ## to handle different length snpgenotyping design
-        unless ( exists $info->{ $name1 } and exists $info->{ $name2 } ){
-            say "[NOTE] Location $loc not present in both, ignoring location";
+        ## skip if not present in both samples
+        unless ( exists $info->{ $sample1 } and exists $info->{ $sample2 } ){
+            say "[NOTE] Ignoring location $loc: not present in both $sample1 and $sample2";
             next;
         }
         
-        ## use the collapsed notation if requested (see %GENOTYPE_CONVERSION)
+        ## use the collapsed notation if requested
         my $callField = 'gtCalls';
         $callField = 'gtCallsCollapsed' if $COLLAPSE_CALL;
         
-        my $chr = $info->{ 'chr' };
-        my $call1 = $info->{ $name1 }{ $callField };
-        my $call2 = $info->{ $name2 }{ $callField };
-        my $alleles1 = $info->{ $name1 }{ 'alleles' };
-        my $alleles2 = $info->{ $name2 }{ 'alleles' };
+        my $chrom = $info->{ 'chr' };
+        my $call1 = $info->{ $sample1 }{ $callField };
+        my $call2 = $info->{ $sample2 }{ $callField };
+        my $alleles1 = $info->{ $sample1 }{ 'alleles' };
+        my $alleles2 = $info->{ $sample2 }{ 'alleles' };
         
         ## setup print output
-        push( @toprint_chroms, $chr );
+        push( @toprint_chroms, $chrom );
         push( @toprint_calls1, $call1 );
         push( @toprint_calls2, $call2 );
         
         ## only use autosomal chromosomes
-        if ( $chr !~ m/^\d+$/ ){
+        if ( $chrom !~ m/^\d+$/ ){
             $skipped++;
-            push( @toprint_result, $NO_CALL_CHAR );
-            push( @toprint_distan, $NO_CALL_CHAR );
+            push( @toprint_result, $NA_CHAR );
+            push( @toprint_distan, $NA_CHAR );
         }
-        ## failed call so uninformative
-        elsif ( ($call1 =~ /$NO_CALL_CHAR/) or ($call2 =~ /$NO_CALL_CHAR/) ){
+        ## failed call
+        elsif ( ($call1 =~ /$NA_CHAR/) or ($call2 =~ /$NA_CHAR/) ){
             $failed++;
-            push( @toprint_result, $NO_CALL_CHAR );
-            push( @toprint_distan, $NO_CALL_CHAR );
+            push( @toprint_result, $NA_CHAR );
+            push( @toprint_distan, $NA_CHAR );
         }
-        ## informative call
+        ## usable call
         else{
             ## identical call
             if ( $call1 eq $call2 ){
-                $equal++;
+                $identical++;
                 push( @toprint_result, 'Y' );
                 push( @toprint_distan, 0 );
             }
             ## different call
             else{
-                $unequal++;
+                $different++;
                 my $alleleDistance += calculateDistance( $alleles1, $alleles2 );
                 $distance += $alleleDistance;
                 push( @toprint_result, 'N' );
@@ -197,46 +254,63 @@ sub compareCalls{
         }
     }
     
-    my $totalInformative = $equal + $unequal;
-    my $equalPerc = sprintf( "%.2f", 0 );
-    my $unequalPerc = sprintf( "%.2f", 0 );
-    if ( $totalInformative > 0 ){
-        $equalPerc = sprintf( "%.2f", ($equal*100 / $totalInformative) );
-        $unequalPerc = sprintf( "%.2f", ($unequal*100 / $totalInformative) );
+    $usable = $identical + $different;
+    my $identicalPerc = sprintf( "%d", 0 );
+    my $differentPerc = sprintf( "%d", 0 );
+    if ( $usable > 0 ){
+        $identicalPerc = sprintf( "%d", ($identical*100 / $usable) );
+        $differentPerc = sprintf( "%d", ($different*100 / $usable) );
     }
     
     ## append sample names
-    my $fullName1 = $shortName2fullName{ $name1 };
-    my $fullName2 = $shortName2fullName{ $name2 };
-    push( @toprint_calls1, $fullName1 ) if $APPEND_FILE_NAME;
-    push( @toprint_calls2, $fullName2 ) if $APPEND_FILE_NAME;
+    push( @toprint_calls1, $sample1 );
+    push( @toprint_calls2, $sample2 );
     
     ## print to stdout
     say "[INFO] Total skipped = $skipped";
     say "[INFO] Total failed = $failed";
-    say "[INFO] Total informative = $totalInformative (min required: $MIN_INFORMATIVE)";
-    say "[INFO] Total informative and identical = $equal ($equalPerc%)";
-    say "[INFO] Total informative but different = $unequal ($unequalPerc%)";
-    say "[INFO] Total distance between samples = $distance (max allowed: $MAX_DISTANCE)";
-    say join( $OUTPUT_DELIM, "[INFO] Chrom: ", map( sprintf( "%3s", $_ ), @toprint_chroms ) );
-    say join( $OUTPUT_DELIM, "[INFO] file1: ", map( sprintf( "%3s", $_ ), @toprint_calls1 ) );
-    say join( $OUTPUT_DELIM, "[INFO] file2: ", map( sprintf( "%3s", $_ ), @toprint_calls2 ) );
-    say join( $OUTPUT_DELIM, "[INFO]  Dist: ", map( sprintf( "%3s", $_ ), @toprint_distan ) );
-    say join( $OUTPUT_DELIM, "[INFO] Match: ", map( sprintf( "%3s", $_ ), @toprint_result ) );
+    say "[INFO] Total usable = $usable (minimum: $MIN_USABLE)";
+    say "[INFO] Total identical = $identical ($identicalPerc% of usable)";
+    say "[INFO] Total different = $different ($differentPerc% of usable)";
+    say "[INFO] Total distance  = $distance (maximum: $MAX_DISTANCE)";
+    say join( $DELIM_CHAR, "[INFO] Chrom: ", map( sprintf( "%3s", $_ ), @toprint_chroms ) );
+    say join( $DELIM_CHAR, "[INFO] file1: ", map( sprintf( "%3s", $_ ), @toprint_calls1 ) );
+    say join( $DELIM_CHAR, "[INFO] file2: ", map( sprintf( "%3s", $_ ), @toprint_calls2 ) );
+    say join( $DELIM_CHAR, "[INFO]  Dist: ", map( sprintf( "%3s", $_ ), @toprint_distan ) );
+    say join( $DELIM_CHAR, "[INFO] Match: ", map( sprintf( "%3s", $_ ), @toprint_result ) );
     
-    ## determine final OK or FAIL
-    if ( $equal+$unequal < $MIN_INFORMATIVE ){
-        say "[WARN] FINAL RESULT = FAIL (reason: not enough informative pos: $totalInformative < $MIN_INFORMATIVE)" and exit(1);
+    ## determine final RESULT
+    my $result;
+    if ( $usable < $MIN_USABLE ){
+        $result = "FAIL";
+        say "[WARN] FINAL RESULT = $result (not enough usable pos: " . $usable . " < $MIN_USABLE)";
     }
-    elsif( $equal < $MIN_IDENTICAL ){
-        say "[WARN] FINAL RESULT = FAIL (reason: not enough identical calls: $equal < $MIN_IDENTICAL)" and exit(1);
+    elsif( $identical < $MIN_IDENTICAL ){
+        $result = "FAIL";
+        say "[WARN] FINAL RESULT = $result (not enough identical calls: " . $identical . " < $MIN_IDENTICAL)";
     }
     elsif ( $distance > $MAX_DISTANCE ){
-        say "[WARN] FINAL RESULT = FAIL (reason: distance between samples too big: $distance > $MAX_DISTANCE)" and exit(1);
+        $result = "FAIL";
+        say "[WARN] FINAL RESULT = $result (distance between samples too big: " . $distance . " > $MAX_DISTANCE)";
     }
     else{
-        say "[INFO] FINAL RESULT = OK" and exit(0);
+        $result = "OK";
+        say "[INFO] FINAL RESULT = $result";
     }
+    
+    ## setup compare object (add 0 to enforce integer)
+    my %comparison = ();
+    $comparison{ sample1 } = $sample1;
+    $comparison{ sample2 } = $sample2;
+    $comparison{ skipped } = 0 + $skipped;
+    $comparison{ failed } = 0 + $failed;
+    $comparison{ usable } = 0 + $usable;
+    $comparison{ identical } = 0 + $identical;
+    $comparison{ different } = 0 + $different;
+    $comparison{ distance } = 0 + $distance;
+    $comparison{ result }  = $result;
+    
+    return( \%comparison );
 }
 
 sub calculateDistance{
@@ -260,6 +334,11 @@ sub parseVcf{
         next if $_ =~ /^#/;
         my ( $chr, $pos, $id, $ref, $altString, $qual, $filter, $infoString, $formatString, $sampleString ) = split( "\t", $_ );
         
+        ## if no ref or alt info just skip position entirely
+        next if $ref eq "";
+        next if $altString eq "";
+        
+        ## gather all required info
         my @sampleInfoKeys = split( ':', $formatString );
         my @sampleInfoVals = split( ':', $sampleString );
         my @altVariants = split( ',', $altString );
@@ -280,12 +359,14 @@ sub parseVcf{
         
         my $genotype1 = $genotypes[0];
         my $genotype2 = $genotypes[1];
-        my @calledAlleles = ($NO_CALL_CHAR, $NO_CALL_CHAR);
+        my @calledAlleles = ($NA_CHAR, $NA_CHAR);
         
-        die "[ERROR] Unknown genotype ($genotypeCall) at loc $chr:$pos" if not exists $GENOTYPE_CONVERSION{ $genotypeCall };
+        die "[ERROR] Unknown genotype ($genotypeCall) at loc $chr:$pos" if not exists $GT_CONVERSION{ $genotypeCall };
         
-        my $collapsedGenotype = $GENOTYPE_CONVERSION{ $genotypeCall };
-        @calledAlleles = map( $allAlleles[ $_ ], @genotypes ) if $genotype1 =~ /^\d+/ ;
+        my $count1 = scalar @calledAlleles;
+        
+        my $collapsedGenotype = $GT_CONVERSION{ $genotypeCall };
+        @calledAlleles = map( $allAlleles[ $_ ], @genotypes ) if $genotype1 =~ /^\d+/ ;        
         my $alleleCall = join( '/', @calledAlleles );
         
         if ( $verbose ){
@@ -293,6 +374,7 @@ sub parseVcf{
             say "Found $alleleString on $chr:$pos (REF=$ref, ALT=$altString, GT=$genotypeCall)";
         }
         
+        ## store info at location->sample
         my $locationString = $chr.':'.$pos;
         $storeObject->{ $locationString }{ 'chr' } = $chr;
         $storeObject->{ $locationString }{ $name }{ 'gtCalls' } = $alleleCall;
@@ -302,4 +384,3 @@ sub parseVcf{
     close IN;
     
 }
-
