@@ -2,7 +2,7 @@
 
 setpath=$1
 SNPCHECK_VCFS_DIR=/data/common/dbs/snpcheck/32SNPtaq/samplevcfs/
-SNPCHECK_SCRIPT=snpcheck_compare_vcfs
+SNPCHECK_SCRIPT=perform_snpcheck
 CHECKPIPELINE_SCRIPT=check_pipeline_output
 HEALTHTESTS_SCRIPT=do_healthcheck_qctests
 
